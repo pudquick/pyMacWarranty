@@ -1,6 +1,22 @@
 #!/usr/bin/env python
 
-import sys, requests, json
+import sys, json
+
+try:
+    import requests
+except:
+    # My strange hack to use standard libs, if requests module isn't available
+    # http://docs.python-requests.org/en/latest/index.html
+    # Really, check it out - it's great
+    import urllib, types
+    import urllib2 as requests
+    setattr(requests,'content','')
+    def get(self, urlstr, params={}):
+        if (params):
+            urlstr += "?%s" % urllib.urlencode(params)
+        self.content = self.urlopen(urlstr).read()
+        return self
+    requests.get = types.MethodType(get,requests)
 
 standard_keys = (('PROD_DESCR', 'Product Description'),
                  ('SERIAL_ID', 'Serial Number'),
