@@ -50,7 +50,7 @@ def get_warranty(*serials):
     for serial in serials:
         info = warranty_json(serial)
         if (info.has_key('ERROR_CODE')):
-            print "ERROR: Invalid key: %s\n" % (serial)
+            print "ERROR: Invalid serial: %s\n" % (serial)
         else:
             for key,label in (standard_keys + (coverage_date(info), asd_version(info))):
                 print "%s: %s" % (label, info.get(key, key))
