@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json
+import sys, json, subprocess
 
 try:
     import requests
@@ -55,9 +55,13 @@ def get_warranty(*serials):
             for key,label in (standard_keys + (coverage_date(info), asd_version(info))):
                 print "%s: %s" % (label, info.get(key, key))
 
+def get_my_serial():
+    return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
+
 def main():
-    for serial in sys.argv[1:]:
+    for serial in (sys.argv[1:] or get_my_serial()):
         get_warranty(serial)
         
 if __name__ == "__main__":
     main()
+
