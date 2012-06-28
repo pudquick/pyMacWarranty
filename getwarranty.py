@@ -55,6 +55,13 @@ def get_warranty(*serials):
             for key,label in (standard_keys + (coverage_date(info), asd_version(info))):
                 print "%s: %s" % (label, info.get(key, key))
 
+def get_warranty_dict(serial):
+        info = warranty_json(serial)
+        if (info.has_key('ERROR_CODE')):
+            return None
+        else:
+            return info
+
 def get_my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
 
