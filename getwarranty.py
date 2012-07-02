@@ -63,7 +63,7 @@ def get_estimated_manufacture(serial):
             # New format
             alpha_year = 'cdfghjklmnpqrstvwxyz'
             year = serial[3].lower()
-            est_year = str(2010 + (alpha_year.index(year) / 2))
+            est_year = 2010 + (alpha_year.index(year) / 2)
             # 1st or 2nd half of the year
             est_half = alpha_year.index(year) % 2
             week = serial[4].lower()
