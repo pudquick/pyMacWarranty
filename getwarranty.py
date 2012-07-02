@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, subprocess
+import sys, json, subprocess, datetime
 
 try:
     import requests
@@ -21,7 +21,7 @@ except:
 standard_keys = (('PROD_DESCR', 'Product Description'),
                  ('SERIAL_ID', 'Serial Number'),
                  ('HW_COVERAGE_DESC', 'Warranty Type'),
-                 ('PURCHASE_DATE', 'Purchase Date'))
+                 ('EST_MANUFACTURED_DATE', 'Estimated Manufacture Date'))
 
 asd_db = {}
 
@@ -46,12 +46,43 @@ def asd_version(details):
     init_asd_db()
     return (asd_db.get(details['PROD_DESCR'], 'Not found')+"\n", 'ASD Version')
 
+def get_estimated_manufacture(serial):
+    est_date = u''
+    if 10 < len(serial) < 13:
+        if len(serial) == 11:
+            # Old format
+            year = serial[2].lower()
+            est_year = 2000 + ' 1234567890'.index(year)
+            week = int(serial[3:5]) - 1
+            year_time = datetime.date(year=est_year, month=1, day=1)
+            if (week):
+                week_dif = datetime.timedelta(weeks=week)
+                year_time += week_dif
+            est_date = u'' + year_time.isoformat()
+        else:
+            # New format
+            alpha_year = 'cdfghjklmnpqrstvwxyz'
+            year = serial[3].lower()
+            est_year = str(2010 + (alpha_year.index(year) / 2))
+            # 1st or 2nd half of the year
+            est_half = alpha_year.index(year) % 2
+            week = serial[4].lower()
+            alpha_week = ' 123456789cdfghjklmnpqrtvwxy'
+            est_week = alpha_week.index(week) + (est_half * 26) - 1
+            year_time = datetime.date(year=est_year, month=1, day=1)
+            if (est_week):
+                week_dif = datetime.timedelta(weeks=est_week)
+                year_time += week_dif
+            est_date = u'' + year_time.isoformat()
+    return est_date
+
 def get_warranty(*serials):
     for serial in serials:
         info = warranty_json(serial)
         if (info.has_key('ERROR_CODE')):
             print "ERROR: Invalid serial: %s\n" % (serial)
         else:
+            info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
             for key,label in (standard_keys + (coverage_date(info), asd_version(info))):
                 print "%s: %s" % (label, info.get(key, key))
 
@@ -60,6 +91,7 @@ def get_warranty_dict(serial):
     if (info.has_key('ERROR_CODE')):
         return None
     else:
+        info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
         return info
 
 def get_my_serial():
