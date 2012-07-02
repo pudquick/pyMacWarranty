@@ -47,6 +47,7 @@ def asd_version(details):
     return (asd_db.get(details['PROD_DESCR'], 'Not found')+"\n", 'ASD Version')
 
 def get_estimated_manufacture(serial):
+    # http://www.macrumors.com/2010/04/16/apple-tweaks-serial-number-format-with-new-macbook-pro/
     est_date = u''
     if 10 < len(serial) < 13:
         if len(serial) == 11:
