@@ -53,7 +53,7 @@ def get_estimated_manufacture(serial):
         if len(serial) == 11:
             # Old format
             year = serial[2].lower()
-            est_year = 2000 + ' 1234567890'.index(year)
+            est_year = 2000 + '   3456789012'.index(year)
             week = int(serial[3:5]) - 1
             year_time = datetime.date(year=est_year, month=1, day=1)
             if (week):
