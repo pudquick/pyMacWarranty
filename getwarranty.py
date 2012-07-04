@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, subprocess, datetime
+import sys, json, subprocess, datetime, os.path, pickle
 
 try:
     import requests
@@ -24,6 +24,13 @@ standard_keys = (('PROD_DESCR', 'Product Description'),
                  ('EST_MANUFACTURED_DATE', 'Estimated Manufacture Date'))
 
 asd_db = {}
+
+try:
+    model_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model_snippets.pickle'), 'rb')
+    model_db = pickle.load(model_file)
+    model_file.close()
+except:
+    model_db = {}
 
 def init_asd_db():
     if (not asd_db):
@@ -97,6 +104,20 @@ def get_warranty_dict(serial):
 
 def get_my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
+
+def get_snippet(serial):
+    # http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
+    # https://github.com/MagerValp/MacModelShelf
+    # Serial Number "Snippet": http://www.everymac.com/mac-identification/index-how-to-identify-my-mac.html
+    if (len(serial) == 11):
+        snippet = serial[-3:]
+    elif (len(serial) == 12):
+        snippet = serial[-4:]
+    elif (2 < len(serial) < 5):
+        snippet = serial
+    else:
+        return None
+    return model_db.get(snippet.upper(), None)
 
 def main():
     for serial in (sys.argv[1:] or get_my_serial()):
