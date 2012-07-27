@@ -107,6 +107,7 @@ def get_my_serial():
 
 def get_snippet(serial):
     # http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
+    # https://km.support.apple.com.edgekey.net/kb/securedImage.jsp?configcode=%s&size=72x72
     # https://github.com/MagerValp/MacModelShelf
     # Serial Number "Snippet": http://www.everymac.com/mac-identification/index-how-to-identify-my-mac.html
     if (len(serial) == 11):
