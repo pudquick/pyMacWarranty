@@ -5,7 +5,7 @@
 # https://selfsolve.apple.com/warrantyChecker.do
 # That version of the code (tag: v1.0) is preserved for historical purposes.
 # To download it, visit this URL:
-# https://github.com/pudquick/pyMacWarranty/tree/813f64166ae5fecce57387e70366c383aeb98c0c
+# https://github.com/pudquick/pyMacWarranty/tree/v1.0
 
 # Recommended usage for version 2.0+:
 # import getwarranty
