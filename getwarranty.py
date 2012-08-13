@@ -2,9 +2,7 @@
 
 # Note: Mid August 2012, Apple removed the warranty status JSON URL located at:
 # https://selfsolve.apple.com/warrantyChecker.do
-# This version of the code (tag: v1.0) is preserved for historical purposes. 
-
-http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
+# This version of the code (tag: v1.0) is preserved for historical purposes.
 
 import sys, json, subprocess, datetime, os.path, pickle, dateutil.parser, re
 
