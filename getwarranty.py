@@ -90,17 +90,6 @@ def online_asd_version(prod_descr):
     except:
         return 'NOT FOUND'
 
-def online_snippet_lookup(serial):
-    snippet = serial[-3:]
-    if (len(serial) == 12):
-        snippet = serial[-4:]
-    try:
-        prod_xml = requests.get('http://support-sp.apple.com/sp/product', params={'cc': snippet, 'lang': 'en_US'}).content
-        prod_descr = ET.fromstring(prod_xml).find('configCode').text
-    except:
-        return None
-    return prod_descr
-
 def offline_estimated_manufacture(serial):
     # http://www.macrumors.com/2010/04/16/apple-tweaks-serial-number-format-with-new-macbook-pro/
     est_date = u''
