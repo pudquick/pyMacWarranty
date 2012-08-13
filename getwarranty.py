@@ -3,11 +3,12 @@
 # Version 2.0
 # Note: Mid August 2012, Apple removed the warranty status JSON URL located at:
 # https://selfsolve.apple.com/warrantyChecker.do
-# This version of the code (tag: v1.0) is preserved for historical purposes.
+# That version of the code (tag: v1.0) is preserved for historical purposes.
 # To download it, visit this URL:
 # https://github.com/pudquick/pyMacWarranty/tree/813f64166ae5fecce57387e70366c383aeb98c0c
 
-import sys, json, subprocess, datetime, os.path, pickle, dateutil.parser, re
+import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re
+import xml.etree.ElementTree as ET 
 
 try:
     import requests
@@ -25,48 +26,77 @@ except:
         return self
     requests.get = types.MethodType(get,requests)
 
-standard_keys = (('PROD_DESCR', 'Product Description'),
-                 ('SERIAL_ID', 'Serial Number'),
-                 ('HW_COVERAGE_DESC', 'Warranty Type'),
-                 ('EST_MANUFACTURED_DATE', 'Estimated Manufacture Date'))
-
-standard_offline_keys = (('PROD_DESCR', 'Product Description'),
-                 ('SERIAL_ID', 'Serial Number'),
-                 ('EST_MANUFACTURED_DATE', 'Estimated Manufacture Date'),
-                 ('EST_APPLECARE_END_DATE', 'Estimated AppleCare End Date'),
-                 ('EST_APPLECARE_STATUS', 'Estimated AppleCare Status'))
-
 asd_db = {}
-
-try:
-    model_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model_snippets.pickle'), 'rb')
-    model_db = pickle.load(model_file)
-    model_file.close()
-except:
-    model_db = {}
+model_db = {}
 
 def init_asd_db():
+    global asd_db
     if (not asd_db):
-        response = requests.get('https://raw.github.com/stefanschmidt/warranty/master/asdcheck')
-        for model,val in [model_str.strip().split(':') for model_str in response.content.split('\n') if model_str.strip()]:
-            asd_db[model] = val
+        try:
+            response = requests.get('https://raw.github.com/stefanschmidt/warranty/master/asdcheck')
+            for model,val in [model_str.strip().split(':') for model_str in response.content.split('\n') if model_str.strip()]:
+                asd_db[model] = val
+        except:
+            asd_db = {}
 
-def warranty_json(sn, country='US'):
-    return json.loads(requests.get('https://selfsolve.apple.com/warrantyChecker.do', params={'country': country, 'sn': sn}).content[5:-1])
+def init_model_db():
+    global model_db
+    if (not model_db):
+        try:
+            model_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model_snippets.pickle'), 'rb')
+            model_db = pickle.load(model_file)
+            model_file.close()
+        except:
+            model_db = {}
 
-def coverage_date(details):
-    coverage = 'EXPIRED'
-    if (details.has_key('COV_END_DATE') and (details['COV_END_DATE'] != u'')):
-        coverage = 'COV_END_DATE'
-    if (details.has_key('HW_END_DATE')):
-        coverage = 'HW_END_DATE'
-    return (coverage, 'Coverage')
+def offline_snippet_lookup(serial):
+    # http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
+    # https://km.support.apple.com.edgekey.net/kb/securedImage.jsp?configcode=%s&size=72x72
+    # https://github.com/MagerValp/MacModelShelf
+    # Serial Number "Snippet": http://www.everymac.com/mac-identification/index-how-to-identify-my-mac.html
+    global model_db
+    init_model_db()
+    if (len(serial) == 11):
+        snippet = serial[-3:]
+    elif (len(serial) == 12):
+        snippet = serial[-4:]
+    elif (2 < len(serial) < 5):
+        snippet = serial
+    else:
+        return None
+    return model_db.get(snippet.upper(), None)
 
-def asd_version(details):
+def online_snippet_lookup(serial):
+    snippet = serial[-3:]
+    if (len(serial) == 12):
+        snippet = serial[-4:]
+    try:
+        prod_xml = requests.get('http://support-sp.apple.com/sp/product', params={'cc': snippet, 'lang': 'en_US'}).content
+        prod_descr = ET.fromstring(prod_xml).find('configCode').text
+    except:
+        return None
+    return prod_descr
+
+def online_asd_version(prod_descr):
+    global asd_db
     init_asd_db()
-    return (asd_db.get(details['PROD_DESCR'], 'Not found')+"\n", 'ASD Version')
+    try:
+        return asd_db.get(prod_descr, 'NOT FOUND')
+    except:
+        return 'NOT FOUND'
 
-def get_estimated_manufacture(serial):
+def online_snippet_lookup(serial):
+    snippet = serial[-3:]
+    if (len(serial) == 12):
+        snippet = serial[-4:]
+    try:
+        prod_xml = requests.get('http://support-sp.apple.com/sp/product', params={'cc': snippet, 'lang': 'en_US'}).content
+        prod_descr = ET.fromstring(prod_xml).find('configCode').text
+    except:
+        return None
+    return prod_descr
+
+def offline_estimated_manufacture(serial):
     # http://www.macrumors.com/2010/04/16/apple-tweaks-serial-number-format-with-new-macbook-pro/
     est_date = u''
     if 10 < len(serial) < 13:
@@ -97,95 +127,130 @@ def get_estimated_manufacture(serial):
             est_date = u'' + year_time.strftime('%Y-%m-%d')
     return est_date
 
-def coverage_date(details):
-    coverage = 'EXPIRED'
-    if (details.has_key('COV_END_DATE') and (details['COV_END_DATE'] != u'')):
-        coverage = 'COV_END_DATE'
-    if (details.has_key('HW_END_DATE')):
-        coverage = 'HW_END_DATE'
-    return (coverage, 'Coverage')
-
-def offline_coverage_status(details):
-    coverage = 'EXPIRED'
-    date_expires = dateutil.parser.parse(details['EST_APPLECARE_END_DATE'])
-    today = datetime.datetime.today()
-    if (today <= date_expires):
-        coverage = 'ACTIVE'
-    return coverage
-
-def get_estimated_applecare_end_date(details):
+def offline_estimated_applecare_end_date(details):
     manu_date  = details['EST_MANUFACTURED_DATE']
-    prod_name  = details['PROD_DESCR']
+    prod_descr = details['PROD_DESCR']
     iOS_device = re.compile('(iPhone|iPad|iPod)')
-    if (iOS_device.match(prod_name)):
+    if (iOS_device.match(prod_descr)):
         # Use date of manufacture + 2 years for max AppleCare coverage
         return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*2))).strftime('%Y-%m-%d')
     else:
         # Use date of manufacture + 3 years for max AppleCare coverage
         return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*3))).strftime('%Y-%m-%d')
 
-def get_warranty(*serials):
+def offline_estimated_warranty_end_date(details):
+    manu_date  = details['EST_MANUFACTURED_DATE']
+    return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*1))).strftime('%Y-%m-%d')
+
+def online_warranty(*serials):
+    # One or more arguments can be passed.
+    # The arguments can be a single string or a sequence of strings
+    # URLs used in the new code:
+    # For product description pre-verification: http://support-sp.apple.com/sp/product?cc=SNIPPET&lang=en_US
+    # For warranty status: https://selfsolve.apple.com/wcResults.do?sn=SERIAL&Continue=Continue&cn=&locale=&caller=&num=0
+
     for serial in serials:
-        info = warranty_json(serial)
-        if (info.has_key('ERROR_CODE')):
-            print "ERROR: Invalid serial: %s\n" % (serial)
+        if (not hasattr(serial, "strip") and hasattr(serial, "__getitem__") or hasattr(serial, "__iter__")):
+            # Iterable, but not a string - recurse using items of the sequence as individual arguments
+            for result in online_warranty(*serial):
+                yield result
         else:
-            info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
-            for key,label in (standard_keys + (coverage_date(info), asd_version(info))):
-                print "%s: %s" % (label, info.get(key, key))
+            # Assume string and continue
+            prod_dict = {u'SERIAL_ID': u'' + serial}
+            prod_descr = online_snippet_lookup(prod_dict[u'SERIAL_ID'])
+            if (not prod_descr):
+                prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
+                yield prod_dict
+                continue
+            prod_dict[u'PROD_DESCR'] = u'' + prod_descr
+            prod_dict[u'ASD_VERSION'] = online_asd_version(prod_dict[u'PROD_DESCR'])
+            warranty_status = requests.get('https://selfsolve.apple.com/wcResults.do',
+                params={'sn': serial, 'Continue': 'Continue', 'cn': '', 'locale': '', 'caller': '', 'num': '0'}).content
+            if ('sorry, but this serial number is not valid' in warranty_status):
+                prod_dict[u'ERROR_CODE'] = u'Invalid serial number'
+                yield prod_dict
+                continue
+            # Fill in some details with estimations
+            try:
+                prod_dict[u'EST_MANUFACTURED_DATE'] = offline_estimated_manufacture(serial)
+            except:
+                prod_dict[u'EST_MANUFACTURED_DATE'] = u''
+            if (prod_dict[u'EST_MANUFACTURED_DATE']):
+                # Try to estimate when coverages expire
+                prod_dict[u'EST_WARRANTY_END_DATE'] = offline_estimated_warranty_end_date(prod_dict)
+                prod_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(prod_dict)
+            try:
+                warranty_status = warranty_status.split('warrantyPage.warrantycheck.displayHWSupportInfo')[-1]
+                warranty_status = warranty_status.split('Repairs and Service Coverage: ')[1]
+                if (warranty_status.startswith('Expired')):
+                    prod_dict[u'WARRANTY_STATUS'] = u'EXPIRED'
+                else:
+                    prod_dict[u'WARRANTY_STATUS'] = u'ACTIVE'
+            except:
+                prod_dict[u'ERROR_CODE'] = u'Unknown warranty status'
+                yield prod_dict
+                continue
+            if (prod_dict[u'WARRANTY_STATUS'] == u'ACTIVE'):
+                try:
+                    coverage_end_date = dateutil.parser.parse(warranty_status.split('Estimated Expiration Date: ')[1].split('<')[0])
+                    prod_dict[u'WARRANTY_END_DATE'] = u'' + coverage_end_date.strftime('%Y-%m-%d')
+                except:
+                    prod_dict[u'ERROR_CODE'] = u'Cannot parse warranty end date'
+                    yield prod_dict
+                    continue
+            yield prod_dict
 
-def offline_warranty_json(sn):
-    offline_warranty = dict()
-    offline_warranty['PROD_DESCR'] = get_snippet(sn)
-    if (offline_warranty['PROD_DESCR']):
-        offline_warranty['SERIAL_ID'] = sn
-        return offline_warranty
-    else:
-        return {'ERROR_CODE': 'Unidentified model'}
-
-def get_offline_warranty(*serials):
+def offline_warranty(*serials):
+    # One or more arguments can be passed.
+    # The arguments can be a single string or a sequence of strings
     for serial in serials:
-        info = offline_warranty_json(serial)
-        if (info.has_key('ERROR_CODE')):
-            print "ERROR: Unidentified model snippet: %s\n" % (serial)
+        if (not hasattr(serial, "strip") and hasattr(serial, "__getitem__") or hasattr(serial, "__iter__")):
+            # Iterable, but not a string - recurse using items of the sequence as individual arguments
+            for result in offline_warranty(*serial):
+                yield result
         else:
-            info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
-            info[u'EST_APPLECARE_END_DATE'] = get_estimated_applecare_end_date(info)
-            info[u'EST_APPLECARE_STATUS'] = offline_coverage_status(info)            
-            for key,label in standard_offline_keys:
-                print "%s: %s" % (label, info.get(key, key))
-            print ""
+            # Assume string and continue
+            prod_dict = {u'SERIAL_ID': u'' + serial}
+            prod_descr = offline_snippet_lookup(prod_dict[u'SERIAL_ID'])
+            if (not prod_descr):
+                prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
+                yield prod_dict
+                continue
+            prod_dict[u'PROD_DESCR'] = u'' + prod_descr
+            # Fill in some details with estimations
+            try:
+                prod_dict[u'EST_MANUFACTURED_DATE'] = offline_estimated_manufacture(serial)
+            except:
+                prod_dict[u'EST_MANUFACTURED_DATE'] = u''
+            if (prod_dict[u'EST_MANUFACTURED_DATE']):
+                # Try to estimate when coverages expire
+                prod_dict[u'EST_WARRANTY_END_DATE'] = offline_estimated_warranty_end_date(prod_dict)
+                prod_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(prod_dict)
+                if (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_APPLECARE_END_DATE'])):
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'EXPIRED'
+                elif (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_WARRANTY_END_DATE'])):
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'APPLECARE'
+                else:
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'ACTIVE'
+            yield prod_dict
 
-def get_warranty_dict(serial):
-    info = warranty_json(serial)
-    if (info.has_key('ERROR_CODE')):
-        return None
-    else:
-        info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
-        return info
-
-def get_my_serial():
+def my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
 
-def get_snippet(serial):
-    # http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
-    # https://km.support.apple.com.edgekey.net/kb/securedImage.jsp?configcode=%s&size=72x72
-    # https://github.com/MagerValp/MacModelShelf
-    # Serial Number "Snippet": http://www.everymac.com/mac-identification/index-how-to-identify-my-mac.html
-    if (len(serial) == 11):
-        snippet = serial[-3:]
-    elif (len(serial) == 12):
-        snippet = serial[-4:]
-    elif (2 < len(serial) < 5):
-        snippet = serial
-    else:
-        return None
-    return model_db.get(snippet.upper(), None)
-
 def main():
-    for serial in (sys.argv[1:] or get_my_serial()):
-        get_warranty(serial)
-        
+    for serial in (sys.argv[1:] or my_serial()):
+        for result in offline_warranty(serial):
+            print "%s: %s" % (u'SERIAL_ID', result[u'SERIAL_ID'])
+            if (result.has_key(u'PROD_DESCR')):
+                print "%s: %s" % (u'PROD_DESCR', result[u'PROD_DESCR'])
+            for key,val in sorted(result.items(), key=lambda x: x[0]):
+                if (key not in (u'SERIAL_ID', u'PROD_DESCR', u'ERROR_CODE')):
+                    print "%s: %s" % (key, val)
+            if (result.has_key(u'ERROR_CODE')):
+                print "%s: %s" % (u'ERROR_CODE', result[u'ERROR_CODE'])
+        print ""
+
 if __name__ == "__main__":
     main()
+
 
