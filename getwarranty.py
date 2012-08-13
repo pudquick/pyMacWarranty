@@ -133,8 +133,8 @@ def offline_estimated_manufacture(serial):
     return est_date
 
 def offline_estimated_applecare_end_date(details):
-    manu_date  = details['EST_MANUFACTURED_DATE']
-    prod_descr = details['PROD_DESCR']
+    manu_date  = details[u'EST_MANUFACTURED_DATE']
+    prod_descr = details[u'PROD_DESCR']
     iOS_device = re.compile('(iPhone|iPad|iPod)')
     if (iOS_device.match(prod_descr)):
         # Use date of manufacture + 2 years for max AppleCare coverage
@@ -144,7 +144,7 @@ def offline_estimated_applecare_end_date(details):
         return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*3))).strftime('%Y-%m-%d')
 
 def offline_estimated_warranty_end_date(details):
-    manu_date  = details['EST_MANUFACTURED_DATE']
+    manu_date  = details[u'EST_MANUFACTURED_DATE']
     return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*1))).strftime('%Y-%m-%d')
 
 def online_warranty(*serials):
