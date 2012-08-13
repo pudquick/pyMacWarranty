@@ -7,6 +7,11 @@
 # To download it, visit this URL:
 # https://github.com/pudquick/pyMacWarranty/tree/813f64166ae5fecce57387e70366c383aeb98c0c
 
+# Recommended usage for version 2.0+:
+# import getwarranty
+# results =  getwarranty.online_warranty( ... one or more serials ... )
+# results = getwarranty.offline_warranty( ... one or more serials ... )
+
 import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re
 import xml.etree.ElementTree as ET 
 
