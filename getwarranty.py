@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, subprocess, datetime, os.path, pickle
+import sys, json, subprocess, datetime, os.path, pickle, dateutil.parser, re
 
 try:
     import requests
@@ -22,6 +22,12 @@ standard_keys = (('PROD_DESCR', 'Product Description'),
                  ('SERIAL_ID', 'Serial Number'),
                  ('HW_COVERAGE_DESC', 'Warranty Type'),
                  ('EST_MANUFACTURED_DATE', 'Estimated Manufacture Date'))
+
+standard_offline_keys = (('PROD_DESCR', 'Product Description'),
+                 ('SERIAL_ID', 'Serial Number'),
+                 ('EST_MANUFACTURED_DATE', 'Estimated Manufacture Date'),
+                 ('EST_APPLECARE_END_DATE', 'Estimated AppleCare End Date'),
+                 ('EST_APPLECARE_STATUS', 'Estimated AppleCare Status'))
 
 asd_db = {}
 
@@ -66,7 +72,7 @@ def get_estimated_manufacture(serial):
             if (week):
                 week_dif = datetime.timedelta(weeks=week)
                 year_time += week_dif
-            est_date = u'' + year_time.isoformat()
+            est_date = u'' + year_time.strftime('%Y-%m-%d')
         else:
             # New format
             alpha_year = 'cdfghjklmnpqrstvwxyz'
@@ -81,8 +87,35 @@ def get_estimated_manufacture(serial):
             if (est_week):
                 week_dif = datetime.timedelta(weeks=est_week)
                 year_time += week_dif
-            est_date = u'' + year_time.isoformat()
+            est_date = u'' + year_time.strftime('%Y-%m-%d')
     return est_date
+
+def coverage_date(details):
+    coverage = 'EXPIRED'
+    if (details.has_key('COV_END_DATE') and (details['COV_END_DATE'] != u'')):
+        coverage = 'COV_END_DATE'
+    if (details.has_key('HW_END_DATE')):
+        coverage = 'HW_END_DATE'
+    return (coverage, 'Coverage')
+
+def offline_coverage_status(details):
+    coverage = 'EXPIRED'
+    date_expires = dateutil.parser.parse(details['EST_APPLECARE_END_DATE'])
+    today = datetime.datetime.today()
+    if (today <= date_expires):
+        coverage = 'ACTIVE'
+    return coverage
+
+def get_estimated_applecare_end_date(details):
+    manu_date  = details['EST_MANUFACTURED_DATE']
+    prod_name  = details['PROD_DESCR']
+    iOS_device = re.compile('(iPhone|iPad|iPod)')
+    if (iOS_device.match(prod_name)):
+        # Use date of manufacture + 2 years for max AppleCare coverage
+        return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*2))).strftime('%Y-%m-%d')
+    else:
+        # Use date of manufacture + 3 years for max AppleCare coverage
+        return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*3))).strftime('%Y-%m-%d')
 
 def get_warranty(*serials):
     for serial in serials:
@@ -93,6 +126,28 @@ def get_warranty(*serials):
             info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
             for key,label in (standard_keys + (coverage_date(info), asd_version(info))):
                 print "%s: %s" % (label, info.get(key, key))
+
+def offline_warranty_json(sn):
+    offline_warranty = dict()
+    offline_warranty['PROD_DESCR'] = get_snippet(sn)
+    if (offline_warranty['PROD_DESCR']):
+        offline_warranty['SERIAL_ID'] = sn
+        return offline_warranty
+    else:
+        return {'ERROR_CODE': 'Unidentified model'}
+
+def get_offline_warranty(*serials):
+    for serial in serials:
+        info = offline_warranty_json(serial)
+        if (info.has_key('ERROR_CODE')):
+            print "ERROR: Unidentified model snippet: %s\n" % (serial)
+        else:
+            info[u'EST_MANUFACTURED_DATE'] = get_estimated_manufacture(serial)
+            info[u'EST_APPLECARE_END_DATE'] = get_estimated_applecare_end_date(info)
+            info[u'EST_APPLECARE_STATUS'] = offline_coverage_status(info)            
+            for key,label in standard_offline_keys:
+                print "%s: %s" % (label, info.get(key, key))
+            print ""
 
 def get_warranty_dict(serial):
     info = warranty_json(serial)
