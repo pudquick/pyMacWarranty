@@ -136,7 +136,7 @@ def offline_estimated_warranty_end_date(details):
     manu_date  = details[u'EST_MANUFACTURED_DATE']
     return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(weeks=(52*1))).strftime('%Y-%m-%d')
 
-def online_warranty(*serials):
+def online_warranty_generator(*serials):
     # One or more arguments can be passed.
     # The arguments can be a single string or a sequence of strings
     # URLs used in the new code:
@@ -146,7 +146,7 @@ def online_warranty(*serials):
     for serial in serials:
         if (not hasattr(serial, "strip") and hasattr(serial, "__getitem__") or hasattr(serial, "__iter__")):
             # Iterable, but not a string - recurse using items of the sequence as individual arguments
-            for result in online_warranty(*serial):
+            for result in online_warranty_generator(*serial):
                 yield result
         else:
             # Assume string and continue
@@ -194,13 +194,22 @@ def online_warranty(*serials):
                     continue
             yield prod_dict
 
-def offline_warranty(*serials):
+def online_warranty(*serials):
+    if not serials:
+        return None
+    results = list(online_warranty_generator(serials))
+    if (len(serials) == 1) and (len(results) == 1):
+        if (hasattr(serials[0], "strip") and hasattr(serials[0], "__getitem__") and not hasattr(serials[0], "__iter__")):
+            return results[0]
+    return results
+
+def offline_warranty_generator(*serials):
     # One or more arguments can be passed.
     # The arguments can be a single string or a sequence of strings
     for serial in serials:
         if (not hasattr(serial, "strip") and hasattr(serial, "__getitem__") or hasattr(serial, "__iter__")):
             # Iterable, but not a string - recurse using items of the sequence as individual arguments
-            for result in offline_warranty(*serial):
+            for result in offline_warranty_generator(*serial):
                 yield result
         else:
             # Assume string and continue
@@ -227,6 +236,15 @@ def offline_warranty(*serials):
                 else:
                     prod_dict[u'EST_WARRANTY_STATUS'] = u'ACTIVE'
             yield prod_dict
+
+def offline_warranty(*serials):
+    if not serials:
+        return None
+    results = list(offline_warranty_generator(serials))
+    if (len(serials) == 1) and (len(results) == 1):
+        if (hasattr(serials[0], "strip") and hasattr(serials[0], "__getitem__") and not hasattr(serials[0], "__iter__")):
+            return results[0]
+    return results
 
 def my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
