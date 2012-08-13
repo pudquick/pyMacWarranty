@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
+# Version 2.0
 # Note: Mid August 2012, Apple removed the warranty status JSON URL located at:
 # https://selfsolve.apple.com/warrantyChecker.do
 # This version of the code (tag: v1.0) is preserved for historical purposes.
+# To download it, visit this URL:
+# https://github.com/pudquick/pyMacWarranty/tree/813f64166ae5fecce57387e70366c383aeb98c0c
 
 import sys, json, subprocess, datetime, os.path, pickle, dateutil.parser, re
 
