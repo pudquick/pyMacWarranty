@@ -54,6 +54,18 @@ def init_model_db():
         except:
             model_db = {}
 
+def blank_machine_dict():
+    return {u'SERIAL_ID': u'',
+            u'PROD_DESCR': u'',
+            u'ASD_VERSION': u'',
+            u'EST_APPLECARE_END_DATE': u'',
+            u'EST_MANUFACTURED_DATE': u'',
+            u'EST_WARRANTY_END_DATE': u'',
+            u'EST_WARRANTY_STATUS': u'',
+            u'WARRANTY_END_DATE': u'',
+            u'WARRANTY_STATUS': u'',
+            u'ERROR_CODE': u''}
+
 def offline_snippet_lookup(serial):
     # http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
     # https://km.support.apple.com.edgekey.net/kb/securedImage.jsp?configcode=%s&size=72x72
@@ -86,9 +98,9 @@ def online_asd_version(prod_descr):
     global asd_db
     init_asd_db()
     try:
-        return asd_db.get(prod_descr, 'NOT FOUND')
+        return asd_db.get(prod_descr, 'UNKNOWN')
     except:
-        return 'NOT FOUND'
+        return 'UNKNOWN'
 
 def offline_estimated_manufacture(serial):
     # http://www.macrumors.com/2010/04/16/apple-tweaks-serial-number-format-with-new-macbook-pro/
@@ -150,7 +162,8 @@ def online_warranty_generator(*serials):
                 yield result
         else:
             # Assume string and continue
-            prod_dict = {u'SERIAL_ID': u'' + serial}
+            prod_dict = blank_machine_dict()
+            prod_dict[u'SERIAL_ID'] = serial
             prod_descr = online_snippet_lookup(prod_dict[u'SERIAL_ID'])
             if (not prod_descr):
                 prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
@@ -219,7 +232,8 @@ def offline_warranty_generator(*serials):
                 yield result
         else:
             # Assume string and continue
-            prod_dict = {u'SERIAL_ID': u'' + serial}
+            prod_dict = blank_machine_dict()
+            prod_dict[u'SERIAL_ID'] = serial
             prod_descr = offline_snippet_lookup(prod_dict[u'SERIAL_ID'])
             if (not prod_descr):
                 prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
@@ -262,13 +276,11 @@ def main():
             results = [results]
         for result in results:
             print "%s: %s" % (u'SERIAL_ID', result[u'SERIAL_ID'])
-            if (result.has_key(u'PROD_DESCR')):
-                print "%s: %s" % (u'PROD_DESCR', result[u'PROD_DESCR'])
+            print "%s: %s" % (u'PROD_DESCR', result[u'PROD_DESCR'])
             for key,val in sorted(result.items(), key=lambda x: x[0]):
                 if (key not in (u'SERIAL_ID', u'PROD_DESCR', u'ERROR_CODE')):
                     print "%s: %s" % (key, val)
-            if (result.has_key(u'ERROR_CODE')):
-                print "%s: %s" % (u'ERROR_CODE', result[u'ERROR_CODE'])
+            print "%s: %s" % (u'ERROR_CODE', result[u'ERROR_CODE'])
         print ""
 
 if __name__ == "__main__":
