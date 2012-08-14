@@ -12,7 +12,7 @@
 # results =  getwarranty.online_warranty( ... one or more serials ... )
 # results = getwarranty.offline_warranty( ... one or more serials ... )
 
-import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re, types
+import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re, types, time
 import xml.etree.ElementTree as ET 
 
 try:
@@ -59,12 +59,22 @@ def blank_machine_dict():
             u'PROD_DESCR': u'',
             u'ASD_VERSION': u'',
             u'EST_APPLECARE_END_DATE': u'',
-            u'EST_MANUFACTURED_DATE': u'',
+            u'EST_MANUFACTURE_DATE': u'',
+            u'EST_PURCHASE_DATE': u'',
             u'EST_WARRANTY_END_DATE': u'',
             u'EST_WARRANTY_STATUS': u'',
+            u'PURCHASE_DATE': u'',
             u'WARRANTY_END_DATE': u'',
             u'WARRANTY_STATUS': u'',
             u'ERROR_CODE': u''}
+
+def apple_year_offset(dateobj, years=0):
+    # Convert to a maleable format
+    mod_time = dateobj.timetuple()
+    # Offset year by number of years
+    mod_time = time.struct_time(tuple([mod_time[0]+years]) + mod_time[1:])
+    # Convert back to a datetime obj
+    return datetime.datetime.fromtimestamp(int(time.mktime(mod_time)))
 
 def offline_snippet_lookup(serial):
     # http://support-sp.apple.com/sp/product?cc=%s&lang=en_US
@@ -98,9 +108,9 @@ def online_asd_version(prod_descr):
     global asd_db
     init_asd_db()
     try:
-        return asd_db.get(prod_descr, 'UNKNOWN')
+        return asd_db.get(prod_descr, u'')
     except:
-        return 'UNKNOWN'
+        return u''
 
 def offline_estimated_manufacture(serial):
     # http://www.macrumors.com/2010/04/16/apple-tweaks-serial-number-format-with-new-macbook-pro/
@@ -133,20 +143,40 @@ def offline_estimated_manufacture(serial):
             est_date = u'' + year_time.strftime('%Y-%m-%d')
     return est_date
 
+def update_estimated_warranty(prod_dict):
+    updated_dict = dict(prod_dict)
+    updated_dict[u'EST_WARRANTY_STATUS'] = u'' + prod_dict[u'WARRANTY_STATUS']
+    end_date  = dateutil.parser.parse(prod_dict[u'WARRANTY_END_DATE'])
+    manu_date = dateutil.parser.parse(prod_dict[u'EST_MANUFACTURE_DATE'])
+    offset = int(round((end_date - manu_date).days/365.24))
+    if (offset == 1):
+        # Only covered by a limited warranty
+        updated_dict[u'EST_PURCHASE_DATE'] = apple_year_offset(end_date, -1).strftime('%Y-%m-%d')
+        updated_dict[u'PURCHASE_DATE'] = u'' + updated_dict[u'EST_PURCHASE_DATE']
+        updated_dict[u'EST_WARRANTY_END_DATE']  = prod_dict[u'WARRANTY_END_DATE']
+        updated_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(updated_dict)
+    else:
+        # Covered by AppleCare
+        updated_dict[u'EST_PURCHASE_DATE'] = apple_year_offset(end_date, -1 * offset).strftime('%Y-%m-%d')
+        updated_dict[u'PURCHASE_DATE'] = u'' + updated_dict[u'EST_PURCHASE_DATE']
+        updated_dict[u'EST_WARRANTY_END_DATE']  = apple_year_offset(end_date, (-1 * offset) + 1).strftime('%Y-%m-%d')
+        updated_dict[u'EST_APPLECARE_END_DATE'] = prod_dict[u'WARRANTY_END_DATE']
+    return updated_dict
+
 def offline_estimated_applecare_end_date(details):
-    manu_date  = details[u'EST_MANUFACTURED_DATE']
+    manu_date  = details[u'EST_MANUFACTURE_DATE']
     prod_descr = details[u'PROD_DESCR']
     iOS_device = re.compile('(iPhone|iPad|iPod)')
     if (iOS_device.match(prod_descr)):
-        # Use date of manufacture + 2 years for max AppleCare coverage
-        return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(days=(365.24*2))).strftime('%Y-%m-%d')
+        # iOS: Use date of manufacture + 2 years for max AppleCare coverage
+        return u'' + apple_year_offset(dateutil.parser.parse(manu_date), 2).strftime('%Y-%m-%d')
     else:
-        # Use date of manufacture + 3 years for max AppleCare coverage
-        return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(days=(365.24*3))).strftime('%Y-%m-%d')
+        # Mac: Use date of manufacture + 3 years for max AppleCare coverage
+        return u'' + apple_year_offset(dateutil.parser.parse(manu_date), 3).strftime('%Y-%m-%d')
 
 def offline_estimated_warranty_end_date(details):
-    manu_date  = details[u'EST_MANUFACTURED_DATE']
-    return u'' + (dateutil.parser.parse(manu_date) + datetime.timedelta(days=(365.24*1))).strftime('%Y-%m-%d')
+    manu_date  = details[u'EST_MANUFACTURE_DATE']
+    return u'' + apple_year_offset(dateutil.parser.parse(manu_date), 1).strftime('%Y-%m-%d')
 
 def online_warranty_generator(*serials):
     # One or more arguments can be passed.
@@ -179,11 +209,12 @@ def online_warranty_generator(*serials):
                 continue
             # Fill in some details with estimations
             try:
-                prod_dict[u'EST_MANUFACTURED_DATE'] = offline_estimated_manufacture(serial)
+                prod_dict[u'EST_MANUFACTURE_DATE'] = offline_estimated_manufacture(serial)
             except:
-                prod_dict[u'EST_MANUFACTURED_DATE'] = u''
-            if (prod_dict[u'EST_MANUFACTURED_DATE']):
+                prod_dict[u'EST_MANUFACTURE_DATE'] = u''
+            if (prod_dict[u'EST_MANUFACTURE_DATE']):
                 # Try to estimate when coverages expire
+                prod_dict[u'EST_PURCHASE_DATE'] = u'' + prod_dict[u'EST_MANUFACTURE_DATE']
                 prod_dict[u'EST_WARRANTY_END_DATE'] = offline_estimated_warranty_end_date(prod_dict)
                 prod_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(prod_dict)
                 if (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_APPLECARE_END_DATE'])):
@@ -191,22 +222,26 @@ def online_warranty_generator(*serials):
                 elif (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_WARRANTY_END_DATE'])):
                     prod_dict[u'EST_WARRANTY_STATUS'] = u'APPLECARE'
                 else:
-                    prod_dict[u'EST_WARRANTY_STATUS'] = u'ACTIVE'
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'LIMITED'
             try:
                 warranty_status = warranty_status.split('warrantyPage.warrantycheck.displayHWSupportInfo')[-1]
                 warranty_status = warranty_status.split('Repairs and Service Coverage: ')[1]
                 if (warranty_status.startswith('Expired')):
                     prod_dict[u'WARRANTY_STATUS'] = u'EXPIRED'
                 else:
-                    prod_dict[u'WARRANTY_STATUS'] = u'ACTIVE'
+                    if (warranty_status.split('<')[0].endswith('Limited Warranty.')):
+                        prod_dict[u'WARRANTY_STATUS'] = u'LIMITED'
+                    else:
+                        prod_dict[u'WARRANTY_STATUS'] = u'APPLECARE'
             except:
                 prod_dict[u'ERROR_CODE'] = u'Unknown warranty status'
                 yield prod_dict
                 continue
-            if (prod_dict[u'WARRANTY_STATUS'] == u'ACTIVE'):
+            if (prod_dict[u'WARRANTY_STATUS'] != u'EXPIRED'):
                 try:
                     coverage_end_date = dateutil.parser.parse(warranty_status.split('Estimated Expiration Date: ')[1].split('<')[0])
                     prod_dict[u'WARRANTY_END_DATE'] = u'' + coverage_end_date.strftime('%Y-%m-%d')
+                    prod_dict = update_estimated_warranty(prod_dict)
                 except:
                     prod_dict[u'ERROR_CODE'] = u'Cannot parse warranty end date'
                     yield prod_dict
@@ -242,11 +277,12 @@ def offline_warranty_generator(*serials):
             prod_dict[u'PROD_DESCR'] = u'' + prod_descr
             # Fill in some details with estimations
             try:
-                prod_dict[u'EST_MANUFACTURED_DATE'] = offline_estimated_manufacture(serial)
+                prod_dict[u'EST_MANUFACTURE_DATE'] = offline_estimated_manufacture(serial)
             except:
-                prod_dict[u'EST_MANUFACTURED_DATE'] = u''
-            if (prod_dict[u'EST_MANUFACTURED_DATE']):
+                prod_dict[u'EST_MANUFACTURE_DATE'] = u''
+            if (prod_dict[u'EST_MANUFACTURE_DATE']):
                 # Try to estimate when coverages expire
+                prod_dict[u'EST_PURCHASE_DATE'] = u'' + prod_dict[u'EST_MANUFACTURE_DATE']
                 prod_dict[u'EST_WARRANTY_END_DATE'] = offline_estimated_warranty_end_date(prod_dict)
                 prod_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(prod_dict)
                 if (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_APPLECARE_END_DATE'])):
@@ -254,7 +290,7 @@ def offline_warranty_generator(*serials):
                 elif (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_WARRANTY_END_DATE'])):
                     prod_dict[u'EST_WARRANTY_STATUS'] = u'APPLECARE'
                 else:
-                    prod_dict[u'EST_WARRANTY_STATUS'] = u'ACTIVE'
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'LIMITED'
             yield prod_dict
 
 def offline_warranty(*serials):
@@ -285,5 +321,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
