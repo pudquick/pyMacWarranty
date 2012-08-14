@@ -257,7 +257,7 @@ def my_serial():
 
 def main():
     for serial in (sys.argv[1:] or my_serial()):
-        for result in offline_warranty(serial):
+        for result in online_warranty(serial):
             print "%s: %s" % (u'SERIAL_ID', result[u'SERIAL_ID'])
             if (result.has_key(u'PROD_DESCR')):
                 print "%s: %s" % (u'PROD_DESCR', result[u'PROD_DESCR'])
