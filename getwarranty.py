@@ -173,6 +173,12 @@ def online_warranty_generator(*serials):
                 # Try to estimate when coverages expire
                 prod_dict[u'EST_WARRANTY_END_DATE'] = offline_estimated_warranty_end_date(prod_dict)
                 prod_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(prod_dict)
+                if (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_APPLECARE_END_DATE'])):
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'EXPIRED'
+                elif (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_WARRANTY_END_DATE'])):
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'APPLECARE'
+                else:
+                    prod_dict[u'EST_WARRANTY_STATUS'] = u'ACTIVE'
             try:
                 warranty_status = warranty_status.split('warrantyPage.warrantycheck.displayHWSupportInfo')[-1]
                 warranty_status = warranty_status.split('Repairs and Service Coverage: ')[1]
