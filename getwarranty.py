@@ -12,7 +12,7 @@
 # results =  getwarranty.online_warranty( ... one or more serials ... )
 # results = getwarranty.offline_warranty( ... one or more serials ... )
 
-import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re
+import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re, types
 import xml.etree.ElementTree as ET 
 
 try:
@@ -254,10 +254,13 @@ def offline_warranty(*serials):
 
 def my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
-
+    
 def main():
     for serial in (sys.argv[1:] or my_serial()):
-        for result in online_warranty(serial):
+        results = online_warranty(serial)
+        if type(results) == types.DictType:
+            results = [results]
+        for result in results:
             print "%s: %s" % (u'SERIAL_ID', result[u'SERIAL_ID'])
             if (result.has_key(u'PROD_DESCR')):
                 print "%s: %s" % (u'PROD_DESCR', result[u'PROD_DESCR'])
