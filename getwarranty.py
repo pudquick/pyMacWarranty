@@ -12,7 +12,32 @@
 # results =  getwarranty.online_warranty( ... one or more serials ... )
 # results = getwarranty.offline_warranty( ... one or more serials ... )
 
-import sys, subprocess, datetime, os.path, pickle, dateutil.parser, re, types, time
+"""Usage: getwarranty [OPTION ...] [SERIAL1 SERIAL2 ...]
+
+List warranty information for one or more Apple devices.
+
+If no serial number is provided on the command-line, the script will
+assume it's running on an OS X machine and attempt to query the local
+serial number and provide information regarding it.
+
+Default output is "ATTRIBUTE: value", per line. Use the options below
+for alternate format output.
+
+Options:
+-h, --help          Display this message
+-f, --file FILE     Read serial numbers from FILE (one per line)
+-o, --output        Save output to specified file instead of stdout
+-c, --csv           Output in comma-separated format
+-t, --tsv           Output in tab-separated format
+
+Example usage:
+Read from file, save to csv:    getwarranty -f serials.txt -o output.csv
+Print local serial to stdout:   getwarranty
+Several serials to stdout:      getwarranty SERIAL1 SERIAL2 SERIAL3
+"""
+
+import sys, subprocess, datetime, os.path, pickle, dateutil.parser
+import re, types, time, getopt, csv, codecs, cStringIO
 import xml.etree.ElementTree as ET 
 
 try:
@@ -304,20 +329,105 @@ def offline_warranty(*serials):
 
 def my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
-    
+
+class UnicodeWriter:
+    def __init__(self, f, dialect=csv.excel, encoding="utf-8", **kwds):
+        self.queue = cStringIO.StringIO()
+        self.writer = csv.writer(self.queue, dialect=dialect, **kwds)
+        self.stream = f
+        self.encoder = codecs.getincrementalencoder(encoding)()
+    def writerow(self, row):
+        temp = []
+        for s in row:
+            if (type(s) == types.IntType):
+                temp.append(str(s))
+            else:
+                temp.append(s)
+        self.writer.writerow([s.encode("utf-8") for s in temp])
+        data = self.queue.getvalue()
+        data = data.decode("utf-8")
+        data = self.encoder.encode(data)
+        self.stream.write(data)
+        self.queue.truncate(0)
+    def writerows(self, rows):
+        for row in rows:
+            self.writerow(row)
+
+def usage():
+    print __doc__
+    sys.exit()
+
 def main():
-    for serial in (sys.argv[1:] or my_serial()):
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hf:o:ct", ["help", "file=", "output=","csv","tsv"])
+    except getopt.GetoptError, err:
+        print str(err)
+        usage()
+    outfile,format = None,None
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            usage()
+        elif o in ("-f", "--file"):
+            try:
+                f = open(a, "rb")
+            except:
+                print "Unable to read file:", a
+                usage()
+            args = [line for line in f.read().splitlines() if line.strip()]
+            f.close()
+        elif o in ("-o", "--output"):
+            outfile = a
+        elif o in ("-c", "--csv"):
+            format = "csv"
+        elif o in ("-t", "--tsv"):
+            format = "tsv"
+    # Whatever args remain are considered serials
+    serials = args
+    warranty_dicts = []
+    for serial in (serials or my_serial()):
         results = online_warranty(serial)
         if type(results) == types.DictType:
             results = [results]
-        for result in results:
-            print "%s: %s" % (u'SERIAL_ID', result[u'SERIAL_ID'])
-            print "%s: %s" % (u'PROD_DESCR', result[u'PROD_DESCR'])
+        warranty_dicts.extend(results)
+    csv.register_dialect('exceltab', delimiter='\t')
+    csv.register_dialect('excel', delimiter=',')
+    # writer = UnicodeWriter(outfile, dialect='exceltab')
+    if (not format):
+        plain_format = ""
+        for result in warranty_dicts:
+            plain_format += "%s: %s\n" % (u'SERIAL_ID', result[u'SERIAL_ID'])
+            plain_format += "%s: %s\n" % (u'PROD_DESCR', result[u'PROD_DESCR'])
             for key,val in sorted(result.items(), key=lambda x: x[0]):
                 if (key not in (u'SERIAL_ID', u'PROD_DESCR', u'ERROR_CODE')):
-                    print "%s: %s" % (key, val)
-            print "%s: %s" % (u'ERROR_CODE', result[u'ERROR_CODE'])
-        print ""
+                    plain_format += "%s: %s\n" % (key, val)
+            plain_format += "%s: %s\n\n" % (u'ERROR_CODE', result[u'ERROR_CODE'])
+        if (not outfile):
+            sys.stdout.write(plain_format)
+        else:
+            open(outfile,"wb").write(plain_format)
+    elif (format in ['csv','tsv']):
+        if (not outfile):
+            outfile = sys.stdout
+        else:
+            outfile = open(outfile, "wb")
+        dialect = {'csv': 'excel', 'tsv': 'exceltab'}[format]
+        writer = UnicodeWriter(outfile, dialect=dialect)
+        # write out headers
+        sample_machine = blank_machine_dict()
+        header_row = [u'SERIAL_ID', u'PROD_DESCR']
+        for key,val in sorted(sample_machine.items(), key=lambda x: x[0]):
+            if (key not in (u'SERIAL_ID', u'PROD_DESCR', u'ERROR_CODE')):
+                header_row.append(key)
+        header_row.append(u'ERROR_CODE')
+        writer.writerow(header_row)
+        for result in warranty_dicts:
+            row_data = [result[u'SERIAL_ID']]
+            row_data.append(result[u'PROD_DESCR'])
+            for key,val in sorted(result.items(), key=lambda x: x[0]):
+                if (key not in (u'SERIAL_ID', u'PROD_DESCR', u'ERROR_CODE')):
+                    row_data.append(val)
+            row_data.append(result[u'ERROR_CODE'])
+            writer.writerow(row_data)
 
 if __name__ == "__main__":
     main()
