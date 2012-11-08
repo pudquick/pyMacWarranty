@@ -36,9 +36,14 @@ Print local serial to stdout:   getwarranty
 Several serials to stdout:      getwarranty SERIAL1 SERIAL2 SERIAL3
 """
 
-import sys, subprocess, datetime, os.path, pickle, dateutil.parser
+import sys, subprocess, datetime, os.path, dateutil.parser
 import re, types, time, getopt, csv, codecs, cStringIO
 import xml.etree.ElementTree as ET 
+# import pickle   --- no longer doing pickles, switch to json
+try:
+    import json
+except:
+    import simplejson as json
 
 try:
     import requests
@@ -73,8 +78,10 @@ def init_model_db():
     global model_db
     if (not model_db):
         try:
-            model_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model_snippets.pickle'), 'rb')
-            model_db = pickle.load(model_file)
+            # model_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model_snippets.pickle'), 'rb')
+            model_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model_snippets.json'), 'r')
+            # model_db = pickle.load(model_file)
+            model_db = json.load(model_file)
             model_file.close()
         except:
             model_db = {}
