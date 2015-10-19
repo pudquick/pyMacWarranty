@@ -210,14 +210,21 @@ def warranty_generator(*serials):
             prod_dict = blank_machine_dict()
             prod_dict[u'SERIAL_ID'] = serial
             try:
-                prod_descr = online_snippet_lookup(prod_dict[u'SERIAL_ID'])
-            except:
                 prod_descr = offline_snippet_lookup(prod_dict[u'SERIAL_ID'])
+            except:
+                prod_descr = None
+            if (not prod_descr):
+                # It's not in the snippet database, look it up
+                try:
+                    prod_descr = online_snippet_lookup(prod_dict[u'SERIAL_ID'])
+                except:
+                    prod_descr = None
             if (not prod_descr):
                 prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
-                yield prod_dict
-                continue
-            prod_dict[u'PROD_DESCR'] = u'' + prod_descr
+            try:
+                prod_dict[u'PROD_DESCR'] = u'' + prod_descr
+            except:
+                prod_dict[u'PROD_DESCR'] = u''
             # Fill in some details with estimations
             try:
                 prod_dict[u'EST_MANUFACTURE_DATE'] = offline_estimated_manufacture(serial)
