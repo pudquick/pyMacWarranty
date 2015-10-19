@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 
-# Version 2.0
-# Note: Mid August 2012, Apple removed the warranty status JSON URL located at:
-# https://selfsolve.apple.com/warrantyChecker.do
-# That version of the code (tag: v1.0) is preserved for historical purposes.
-# To download it, visit this URL:
-# https://github.com/pudquick/pyMacWarranty/tree/v1.0
+# Version 2.1
+# Apple has again changed the warranty lookup method and now redirects to
+# a CAPTCHA protected page at https://checkcoverage.apple.com/
+# As such, no "online" warranty status is now possible. All warranty
+# information is now estimated.
+#
+# API changes:
+# .online_warranty and .offline_warranty are deprecated and both
+# now point to the replacement .warranty (which is offline only)
 
-# Recommended usage for version 2.0+:
+# To use as a python module:
 # import getwarranty
-# results =  getwarranty.online_warranty( ... one or more serials ... )
-# results = getwarranty.offline_warranty( ... one or more serials ... )
+# results =  getwarranty.warranty( ... one or more serials ... )
 
 """Usage: getwarranty [OPTION ...] [SERIAL1 SERIAL2 ...]
 
@@ -210,92 +212,13 @@ def offline_estimated_warranty_end_date(details):
     manu_date  = details[u'EST_MANUFACTURE_DATE']
     return u'' + apple_year_offset(dateutil.parser.parse(manu_date), 1).strftime('%Y-%m-%d')
 
-def online_warranty_generator(*serials):
-    # One or more arguments can be passed.
-    # The arguments can be a single string or a sequence of strings
-    # URLs used in the new code:
-    # For product description pre-verification: http://support-sp.apple.com/sp/product?cc=SNIPPET&lang=en_US
-    # For warranty status: https://selfsolve.apple.com/wcResults.do?sn=SERIAL&Continue=Continue&cn=&locale=&caller=&num=0
-
-    for serial in serials:
-        if (not hasattr(serial, "strip") and hasattr(serial, "__getitem__") or hasattr(serial, "__iter__")):
-            # Iterable, but not a string - recurse using items of the sequence as individual arguments
-            for result in online_warranty_generator(*serial):
-                yield result
-        else:
-            # Assume string and continue
-            prod_dict = blank_machine_dict()
-            prod_dict[u'SERIAL_ID'] = serial
-            prod_descr = online_snippet_lookup(prod_dict[u'SERIAL_ID'])
-            if (not prod_descr):
-                prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
-                yield prod_dict
-                continue
-            prod_dict[u'PROD_DESCR'] = u'' + prod_descr
-            prod_dict[u'ASD_VERSION'] = online_asd_version(prod_dict[u'PROD_DESCR'])
-            warranty_status = requests.get('https://selfsolve.apple.com/wcResults.do',
-                params={'sn': serial, 'Continue': 'Continue', 'cn': '', 'locale': '', 'caller': '', 'num': '0'}).content
-            if ('sorry, but this serial number is not valid' in warranty_status):
-                prod_dict[u'ERROR_CODE'] = u'Invalid serial number'
-                yield prod_dict
-                continue
-            # Fill in some details with estimations
-            try:
-                prod_dict[u'EST_MANUFACTURE_DATE'] = offline_estimated_manufacture(serial)
-            except:
-                prod_dict[u'EST_MANUFACTURE_DATE'] = u''
-            if (prod_dict[u'EST_MANUFACTURE_DATE']):
-                # Try to estimate when coverages expire
-                prod_dict[u'EST_PURCHASE_DATE'] = u'' + prod_dict[u'EST_MANUFACTURE_DATE']
-                prod_dict[u'EST_WARRANTY_END_DATE'] = offline_estimated_warranty_end_date(prod_dict)
-                prod_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(prod_dict)
-                if (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_APPLECARE_END_DATE'])):
-                    prod_dict[u'EST_WARRANTY_STATUS'] = u'EXPIRED'
-                elif (datetime.datetime.now() > dateutil.parser.parse(prod_dict[u'EST_WARRANTY_END_DATE'])):
-                    prod_dict[u'EST_WARRANTY_STATUS'] = u'APPLECARE'
-                else:
-                    prod_dict[u'EST_WARRANTY_STATUS'] = u'LIMITED'
-            try:
-                warranty_status = warranty_status.split('warrantyPage.warrantycheck.displayHWSupportInfo')[-1]
-                warranty_status = warranty_status.split('Repairs and Service Coverage: ')[1]
-                if (warranty_status.startswith('Expired')):
-                    prod_dict[u'WARRANTY_STATUS'] = u'EXPIRED'
-                else:
-                    if (warranty_status.split('<')[0].endswith('Limited Warranty.')):
-                        prod_dict[u'WARRANTY_STATUS'] = u'LIMITED'
-                    else:
-                        prod_dict[u'WARRANTY_STATUS'] = u'APPLECARE'
-            except:
-                prod_dict[u'ERROR_CODE'] = u'Unknown warranty status'
-                yield prod_dict
-                continue
-            if (prod_dict[u'WARRANTY_STATUS'] != u'EXPIRED'):
-                try:
-                    coverage_end_date = dateutil.parser.parse(warranty_status.split('Estimated Expiration Date: ')[1].split('<')[0])
-                    prod_dict[u'WARRANTY_END_DATE'] = u'' + coverage_end_date.strftime('%Y-%m-%d')
-                    prod_dict = update_estimated_warranty(prod_dict)
-                except:
-                    prod_dict[u'ERROR_CODE'] = u'Cannot parse warranty end date'
-                    yield prod_dict
-                    continue
-            yield prod_dict
-
-def online_warranty(*serials):
-    if not serials:
-        return None
-    results = list(online_warranty_generator(serials))
-    if (len(serials) == 1) and (len(results) == 1):
-        if (hasattr(serials[0], "strip") and hasattr(serials[0], "__getitem__") and not hasattr(serials[0], "__iter__")):
-            return results[0]
-    return results
-
-def offline_warranty_generator(*serials):
+def warranty_generator(*serials):
     # One or more arguments can be passed.
     # The arguments can be a single string or a sequence of strings
     for serial in serials:
         if (not hasattr(serial, "strip") and hasattr(serial, "__getitem__") or hasattr(serial, "__iter__")):
             # Iterable, but not a string - recurse using items of the sequence as individual arguments
-            for result in offline_warranty_generator(*serial):
+            for result in warranty_generator(*serial):
                 yield result
         else:
             # Assume string and continue
@@ -325,14 +248,26 @@ def offline_warranty_generator(*serials):
                     prod_dict[u'EST_WARRANTY_STATUS'] = u'LIMITED'
             yield prod_dict
 
-def offline_warranty(*serials):
+def warranty(*serials):
     if not serials:
         return None
-    results = list(offline_warranty_generator(serials))
+    results = list(warranty_generator(serials))
     if (len(serials) == 1) and (len(results) == 1):
         if (hasattr(serials[0], "strip") and hasattr(serials[0], "__getitem__") and not hasattr(serials[0], "__iter__")):
             return results[0]
     return results
+
+# Deprecated, see notes above
+online_warranty_generator = warranty_generator
+
+# Deprecated, see notes above
+online_warranty = warranty
+
+# Deprecated, see notes above
+offline_warranty_generator = warranty_generator
+
+# Deprecated, see notes above
+offline_warranty = warranty
 
 def my_serial():
     return [x for x in [subprocess.Popen("system_profiler SPHardwareDataType |grep -v tray |awk '/Serial/ {print $4}'", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()] if x]
