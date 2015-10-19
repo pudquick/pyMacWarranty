@@ -177,26 +177,6 @@ def offline_estimated_manufacture(serial):
             est_date = u'' + year_time.strftime('%Y-%m-%d')
     return est_date
 
-def update_estimated_warranty(prod_dict):
-    updated_dict = dict(prod_dict)
-    updated_dict[u'EST_WARRANTY_STATUS'] = u'' + prod_dict[u'WARRANTY_STATUS']
-    end_date  = dateutil.parser.parse(prod_dict[u'WARRANTY_END_DATE'])
-    manu_date = dateutil.parser.parse(prod_dict[u'EST_MANUFACTURE_DATE'])
-    offset = int(round((end_date - manu_date).days/365.24))
-    if (offset == 1):
-        # Only covered by a limited warranty
-        updated_dict[u'EST_PURCHASE_DATE'] = apple_year_offset(end_date, -1).strftime('%Y-%m-%d')
-        updated_dict[u'PURCHASE_DATE'] = u'' + updated_dict[u'EST_PURCHASE_DATE']
-        updated_dict[u'EST_WARRANTY_END_DATE']  = prod_dict[u'WARRANTY_END_DATE']
-        updated_dict[u'EST_APPLECARE_END_DATE'] = offline_estimated_applecare_end_date(updated_dict)
-    else:
-        # Covered by AppleCare
-        updated_dict[u'EST_PURCHASE_DATE'] = apple_year_offset(end_date, -1 * offset).strftime('%Y-%m-%d')
-        updated_dict[u'PURCHASE_DATE'] = u'' + updated_dict[u'EST_PURCHASE_DATE']
-        updated_dict[u'EST_WARRANTY_END_DATE']  = apple_year_offset(end_date, (-1 * offset) + 1).strftime('%Y-%m-%d')
-        updated_dict[u'EST_APPLECARE_END_DATE'] = prod_dict[u'WARRANTY_END_DATE']
-    return updated_dict
-
 def offline_estimated_applecare_end_date(details):
     manu_date  = details[u'EST_MANUFACTURE_DATE']
     prod_descr = details[u'PROD_DESCR']
