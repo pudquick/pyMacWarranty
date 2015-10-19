@@ -307,7 +307,7 @@ def main():
     serials = args
     warranty_dicts = []
     for serial in (serials or my_serial()):
-        results = online_warranty(serial)
+        results = warranty(serial)
         if type(results) == types.DictType:
             results = [results]
         warranty_dicts.extend(results)
