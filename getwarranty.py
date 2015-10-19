@@ -128,9 +128,14 @@ def offline_snippet_lookup(serial):
     return model_db.get(snippet.upper(), None)
 
 def online_snippet_lookup(serial):
-    snippet = serial[-3:]
-    if (len(serial) == 12):
+    if (len(serial) == 11):
+        snippet = serial[-3:]
+    elif (len(serial) == 12):
         snippet = serial[-4:]
+    elif (2 < len(serial) < 5):
+        snippet = serial
+    else:
+        return None
     try:
         prod_xml = requests.get('http://support-sp.apple.com/sp/product', params={'cc': snippet, 'lang': 'en_US'}).content
         prod_descr = ET.fromstring(prod_xml).find('configCode').text
@@ -204,7 +209,10 @@ def warranty_generator(*serials):
             # Assume string and continue
             prod_dict = blank_machine_dict()
             prod_dict[u'SERIAL_ID'] = serial
-            prod_descr = offline_snippet_lookup(prod_dict[u'SERIAL_ID'])
+            try:
+                prod_descr = online_snippet_lookup(prod_dict[u'SERIAL_ID'])
+            except:
+                prod_descr = offline_snippet_lookup(prod_dict[u'SERIAL_ID'])
             if (not prod_descr):
                 prod_dict[u'ERROR_CODE'] = u'Unknown model snippet'
                 yield prod_dict
